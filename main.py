@@ -154,6 +154,32 @@ gap_analysis_agent = autogen.ConversableAgent(
     End your response with GAP_ANALYSIS_COMPLETE."""
 )
 
+# ============================================================
+# CUSTOM SELECTOR FUNCTION
+# This replaces max_turns as the stopping mechanism for the
+# paper discovery stage. Instead of waiting for turns to run out,
+# this function checks the last message after every exchange and
+# returns None (stop) as soon as PAPERS_FOUND is detected.
+# This prevents the PaperDiscoveryAgent from looping unnecessarily.
+# ============================================================
+def paper_discovery_selector(self, messages=None, sender=None, config=None, **kwargs):
+    """
+    Custom reply function for the paper discovery stage.
+    Returns None to stop the conversation as soon as PAPERS_FOUND
+    appears in the last message — no more waiting for max_turns.
+    """
+    if not messages:
+        return False, None  # no messages yet, keep going
+
+    last_message = messages[-1].get("content") or ""
+
+    if "PAPERS_FOUND" in last_message:
+        # Signal detected — stop the conversation cleanly
+        return True, None
+
+    # Not done yet — let AutoGen continue normally
+    return False, None
+
 
 # ============================================================
 # TOOL REGISTRATION
@@ -169,6 +195,14 @@ autogen.register_function(
     executor=user_proxy,
     name="search_arxiv",
     description="Search arXiv for academic papers given a query string"
+)
+
+# Register the custom selector so UserProxy uses it
+# during the paper discovery chat only
+user_proxy.register_reply(
+    trigger=paper_discovery_agent,
+    reply_func=paper_discovery_selector,
+    position=0  # check this before any other reply functions
 )
 
 
@@ -193,7 +227,7 @@ if __name__ == "__main__":
         {
             "recipient": paper_discovery_agent,
             "message": "Use the refined keywords to find academic papers now.",
-            "max_turns": 6,
+            "max_turns": 10,        # high ceiling — selector stops it early
             "summary_method": "last_msg"
         }
     ])

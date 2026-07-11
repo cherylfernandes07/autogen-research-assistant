@@ -6,7 +6,7 @@ A multi-agent AI system that automates end-to-end academic research workflows �
 
 Manual literature reviews are slow and inconsistent. This project orchestrates five specialized AI agents that collaborate to handle the full research pipeline: refining broad topics into precise questions, discovering relevant papers via arXiv, extracting key insights, compiling structured reports, and identifying research gaps — with a human-in-the-loop approval checkpoint between discovery and analysis.
 
-Built as a demonstration of multi-agent orchestration patterns using AutoGen's sequential workflow, tool registration, caller/executor separation, and HITL design.
+Built as a demonstration of multi-agent orchestration patterns using AutoGen's sequential workflow, tool registration, caller/executor separation, custom selector functions, and HITL design.
 
 ## Demo
 
@@ -15,6 +15,7 @@ Topic: "The impact of microplastics on marine life."
 
 → TopicRefinementAgent    refines into a precise research question + keywords
 → PaperDiscoveryAgent     queries arXiv, returns 5 relevant papers
+                          ↳ custom selector stops pipeline on PAPERS_FOUND
 → [HITL checkpoint]       human reviews and approves paper list
 → InsightSynthesizerAgent extracts 5 key findings with paper citations
 → ReportCompilerAgent     compiles a 4-section structured report
@@ -35,6 +36,7 @@ User Input (broad topic)
         ▼
 ┌─────────────────────┐
 │ Paper Discovery     │  Calls arXiv API via registered tool
+│                     │  ← custom selector stops on PAPERS_FOUND signal
 └─────────────────────┘
         │
         ▼
@@ -63,6 +65,7 @@ User Input (broad topic)
 - **5-agent sequential pipeline** orchestrated via AutoGen's `initiate_chats`
 - **arXiv integration** for real-time academic paper retrieval via registered tool
 - **Caller/executor pattern** — LLM decides when to call tools, UserProxy executes them safely
+- **Custom selector function** — stops paper discovery immediately on `PAPERS_FOUND`, no wasted turns
 - **Context chaining** — each agent's output is automatically passed to the next via `summary_method`
 - **Human-in-the-loop approval** — pipeline pauses after paper discovery for human review
 - **Provider-agnostic LLM config** — swap between Gemini, OpenAI, or Groq in one line
@@ -136,7 +139,7 @@ PROVIDER = "gemini"  # options: "gemini", "groq", "openai"
 
 ```
 autogen-research-assistant/
-├── main.py          # Agent definitions, tool registration, workflow execution
+├── main.py          # Agent definitions, tool registration, custom selector, workflow
 ├── aimodels.py      # Provider-agnostic LLM config (Gemini, OpenAI, Groq)
 ├── requirements.txt
 ├── .env             # API keys (not committed)
@@ -154,23 +157,22 @@ autogen-research-assistant/
 | Gap Analysis Agent | ✅ Complete |
 | Full sequential pipeline (end-to-end) | ✅ Complete |
 | Human-in-the-loop (HITL) checkpoint | ✅ Complete |
+| Custom selector function | ✅ Complete |
 | Provider-agnostic LLM config | ✅ Complete |
 | Export report to markdown file | 🔜 Planned |
-| Custom selector function | 🔜 Planned |
 
 ## Known Limitations
 
-- **PaperDiscoveryAgent loops** before terminating — it correctly finds and summarizes papers but repeats itself across turns before `max_turns` is reached. This is a known Groq/Llama tool-calling behaviour and does not affect output quality. A custom selector function would fix this cleanly and is planned as a future improvement.
-- **arXiv search quality** — results depend on how well the TopicRefinementAgent constructs keywords. Occasionally off-topic papers appear (e.g. light pollution papers in a microplastics search). Prompt tuning or a post-filter step would improve precision.
+- **arXiv search quality** — results depend on how well the TopicRefinementAgent constructs keywords. Occasionally off-topic papers appear. Prompt tuning or a post-filter step would improve precision.
 - **Python 3.9** — several Google dependencies warn about end-of-life support. Upgrading to Python 3.10+ is recommended for production use.
 
 ## Roadmap
 
 - [x] 5-agent sequential pipeline running end-to-end
 - [x] arXiv tool with caller/executor registration pattern
+- [x] Custom selector function for strict workflow routing
 - [x] Human-in-the-loop approval checkpoint
 - [x] Multi-provider LLM support (Gemini, Groq, OpenAI)
-- [ ] Custom selector function for strict workflow routing
 - [ ] Export final report to a `.md` file
 - [ ] Add support for PubMed and Semantic Scholar APIs
 - [ ] Upgrade to Python 3.10+
