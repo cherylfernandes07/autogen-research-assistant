@@ -27,7 +27,7 @@ def get_autogen_config(provider: str) -> dict:
                 "api_key": os.getenv("GROQ_API_KEY"),
                 "api_type": "groq",
                 # Groq uses the OpenAI-compatible endpoint structure
-                "base_url": "https://api.groq.com/openai/v1" 
+                "base_url": "https://api.groq.com" 
             }]
         }
     
