@@ -18,32 +18,16 @@ llm_config = get_autogen_config(PROVIDER)
 # AutoGen will register it so the PaperDiscoveryAgent can call it
 # during the workflow. The UserProxy actually executes it.
 # ============================================================
-def search_arxiv(query: str, max_results: int = 3) -> str:
-    """
-    Search arXiv for academic papers given a query string.
-
-    Args:
-        query: The search string (e.g. "microplastic bioaccumulation marine")
-        max_results: How many papers to return (default 3 to keep output concise)
-
-    Returns:
-        A formatted string of paper titles, authors, URLs, and abstracts.
-        Returns "No papers found." if the query yields nothing.
-    """
-    # arxiv.Client() is the modern way to query arXiv (replaces Search.results())
+def search_arxiv(query: str) -> str:
+    """Search arXiv for academic papers given a query string"""
     client = arxiv.Client()
-
-    # Define the search: what to look for, how many results, ranked by relevance
     search = arxiv.Search(
         query=query,
-        max_results=max_results,
+        max_results=5,  # 👈 hardcode this instead of accepting as parameter
         sort_by=arxiv.SortCriterion.Relevance
     )
-
     papers = []
     for result in client.results(search):
-        # Format each paper as a readable block
-        # We truncate abstracts to 400 chars to keep the agent's context lean
         papers.append(
             f"Title: {result.title}\n"
             f"Authors: {', '.join([a.name for a in result.authors])}\n"
@@ -51,10 +35,7 @@ def search_arxiv(query: str, max_results: int = 3) -> str:
             f"Abstract: {result.summary[:400]}...\n"
             f"---"
         )
-
     return "\n".join(papers) if papers else "No papers found."
-
-
 # ============================================================
 # AGENT DEFINITIONS
 # Each agent has a specific role defined by its system_message.
@@ -74,6 +55,25 @@ user_proxy = autogen.ConversableAgent(
     human_input_mode="NEVER",
     is_termination_msg=lambda x: "GAP_ANALYSIS_COMPLETE" in (x.get("content") or ""),
     max_consecutive_auto_reply=10
+)
+
+# --- Human Approval Agent (HITL) ---
+# This is a SECOND user proxy, separate from the tool executor above.
+# human_input_mode="ALWAYS" means it pauses and waits for your input
+# every time it receives a message — giving you a chance to review
+# the papers found and approve, redirect, or refine before analysis begins.
+# Unlike the silent user_proxy above, this one represents YOU in the loop.
+human_approval_agent = autogen.UserProxyAgent(
+    name="HumanApprovalAgent",
+    human_input_mode="ALWAYS",  # pauses for your input every turn
+    llm_config=False,
+    # Passes control forward once you type "approve" or "looks good"
+    code_execution_config=False,
+    is_termination_msg=lambda x: any(
+        word in (x.get("content") or "").lower()
+        for word in ["approve", "looks good", "proceed", "continue"]
+    ),
+    max_consecutive_auto_reply=0  # never auto-reply — always waits for you
 )
 
 # --- Topic Refinement Agent ---
@@ -182,41 +182,61 @@ autogen.register_function(
 if __name__ == "__main__":
     broad_topic = "The impact of microplastics on marine life."
 
-    chat_results = user_proxy.initiate_chats([
+    # Stage 1: Topic refinement
+    result_1 = user_proxy.initiate_chats([
         {
-            # Stage 1: Sharpen the topic into a precise research question
             "recipient": topic_refinement_agent,
             "message": f"Please refine this topic: {broad_topic}",
             "max_turns": 1,
-            "summary_method": "last_msg"  # passes refined question to next stage
+            "summary_method": "last_msg"
         },
         {
-            # Stage 2: Search arXiv using the refined keywords
-            # max_turns=6 gives room for: tool call + result + summary
             "recipient": paper_discovery_agent,
             "message": "Use the refined keywords to find academic papers now.",
             "max_turns": 6,
-            "summary_method": "last_msg"  # passes paper list to next stage
-        },
+            "summary_method": "last_msg"
+        }
+    ])
+
+    # Extract the paper list from the last chat's summary
+    papers_summary = result_1[-1].summary
+
+    # --- HITL CHECKPOINT ---
+    # Pause here and show the human the papers before continuing.
+    # This runs as a direct 2-agent chat, not a sequential stage.
+    print("\n" + "="*60)
+    print("HUMAN APPROVAL CHECKPOINT")
+    print("="*60)
+    print("Papers found:\n")
+    print(papers_summary)
+    print("\nType 'approve' to continue, or describe changes to make.")
+
+    # Direct initiate_chat between human_approval_agent and user_proxy
+    # This will actually pause and wait for your keyboard input
+    approval_result = human_approval_agent.initiate_chat(
+        user_proxy,
+        message=f"Please review these papers and type 'approve' to proceed:\n\n{papers_summary}",
+        max_turns=2
+    )
+
+    # Stage 2: Analysis pipeline with papers as context
+    user_proxy.initiate_chats([
         {
-            # Stage 3: Extract key insights from the papers
             "recipient": insight_synthesizer_agent,
-            "message": "Extract the key insights from these papers.",
-            "max_turns": 2,
-            "summary_method": "last_msg"  # passes insights to next stage
+            "message": f"Extract the key insights from these papers:\n\n{papers_summary}",
+            "max_turns": 1,  # 👈 was 2 — stop after first response
+            "summary_method": "last_msg"
         },
         {
-            # Stage 4: Compile everything into a structured report
             "recipient": report_compiler_agent,
             "message": "Compile a structured research report from everything gathered so far.",
-            "max_turns": 2,
-            "summary_method": "last_msg"  # passes report to next stage
+            "max_turns": 1,  # 👈 same here
+            "summary_method": "last_msg"
         },
         {
-            # Stage 5: Identify gaps and future research directions
             "recipient": gap_analysis_agent,
             "message": "Identify the research gaps and suggest future directions.",
-            "max_turns": 2,
+            "max_turns": 1,  # 👈 and here
             "summary_method": "last_msg"
         }
     ])

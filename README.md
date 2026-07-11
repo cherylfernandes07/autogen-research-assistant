@@ -1,12 +1,26 @@
 # 🔬 AutoGen Research Assistant
 
-A multi-agent AI system that automates academic research workflows — from topic refinement to paper discovery — using AutoGen, the arXiv API, and Google Gemini.
+A multi-agent AI system that automates end-to-end academic research workflows — from topic refinement to gap analysis — using AutoGen, the arXiv API, and your choice of LLM provider.
 
 ## Overview
 
-Manual literature reviews are slow and inconsistent. This project orchestrates specialized AI agents that collaborate to handle end-to-end research tasks: refining broad topics into precise questions, discovering relevant papers, extracting insights, compiling structured reports, and identifying research gaps.
+Manual literature reviews are slow and inconsistent. This project orchestrates five specialized AI agents that collaborate to handle the full research pipeline: refining broad topics into precise questions, discovering relevant papers via arXiv, extracting key insights, compiling structured reports, and identifying research gaps — with a human-in-the-loop approval checkpoint between discovery and analysis.
 
-Built as a demonstration of multi-agent orchestration patterns using AutoGen's sequential workflow and human-in-the-loop (HITL) design.
+Built as a demonstration of multi-agent orchestration patterns using AutoGen's sequential workflow, tool registration, caller/executor separation, and HITL design.
+
+## Demo
+
+```
+Topic: "The impact of microplastics on marine life."
+
+→ TopicRefinementAgent    refines into a precise research question + keywords
+→ PaperDiscoveryAgent     queries arXiv, returns 5 relevant papers
+→ [HITL checkpoint]       human reviews and approves paper list
+→ InsightSynthesizerAgent extracts 5 key findings with paper citations
+→ ReportCompilerAgent     compiles a 4-section structured report
+→ GapAnalysisAgent        identifies gaps + 3 future research directions
+→ Pipeline terminates cleanly on GAP_ANALYSIS_COMPLETE
+```
 
 ## Architecture
 
@@ -20,52 +34,57 @@ User Input (broad topic)
         │
         ▼
 ┌─────────────────────┐
-│ Paper Discovery     │  Calls arXiv API to retrieve relevant papers
+│ Paper Discovery     │  Calls arXiv API via registered tool
 └─────────────────────┘
         │
         ▼
 ┌─────────────────────┐
-│ User Proxy (HITL)   │  Human approval checkpoint
+│ User Proxy (HITL)   │  Human approval checkpoint — type 'approve' to proceed
 └─────────────────────┘
         │
         ▼
 ┌─────────────────────┐
-│ Insight Synthesizer │  Extracts key findings from abstracts
+│ Insight Synthesizer │  Extracts key findings with paper citations
 └─────────────────────┘
         │
         ▼
 ┌─────────────────────┐
-│ Report Compiler     │  Structures findings into a cohesive report
+│ Report Compiler     │  Structures findings into a 4-section report
 └─────────────────────┘
         │
         ▼
 ┌─────────────────────┐
-│ Gap Analysis        │  Identifies open questions and future directions
+│ Gap Analysis        │  Identifies open questions + future directions
 └─────────────────────┘
 ```
 
 ## Features
 
-- **Multi-agent orchestration** via AutoGen's sequential chat workflow
-- **arXiv integration** for real-time academic paper retrieval
-- **Human-in-the-loop approval** between discovery and analysis stages
+- **5-agent sequential pipeline** orchestrated via AutoGen's `initiate_chats`
+- **arXiv integration** for real-time academic paper retrieval via registered tool
+- **Caller/executor pattern** — LLM decides when to call tools, UserProxy executes them safely
+- **Context chaining** — each agent's output is automatically passed to the next via `summary_method`
+- **Human-in-the-loop approval** — pipeline pauses after paper discovery for human review
 - **Provider-agnostic LLM config** — swap between Gemini, OpenAI, or Groq in one line
-- **Custom selector function** for fine-grained workflow control
 - **Termination conditions** to prevent runaway agent loops
 
 ## Tech Stack
 
 - [AutoGen](https://github.com/microsoft/autogen) — multi-agent orchestration framework
-- [Google Gemini](https://ai.google.dev/) (`gemini-2.0-flash`) — LLM backbone
+- [Google Gemini](https://ai.google.dev/) (`gemini-2.0-flash`) — default LLM backbone
+- [Groq](https://console.groq.com/) (`llama-3.3-70b-versatile`) — fast, rate-limit-friendly alternative
 - [arXiv API](https://arxiv.org/help/api/) — academic paper search
-- Python 3.10+
+- Python 3.9+
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.10 or higher
-- A [Google AI Studio](https://aistudio.google.com/) API key (free tier works)
+- Python 3.9 or higher
+- An API key for at least one provider:
+  - [Google AI Studio](https://aistudio.google.com/) — Gemini (free tier works)
+  - [Groq Console](https://console.groq.com/) — Groq (generous free tier, good for dev)
+  - [OpenAI Platform](https://platform.openai.com/) — OpenAI
 
 ### Installation
 
@@ -85,10 +104,10 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your-gemini-api-key-here
+GROQ_API_KEY=your-groq-api-key-here
 
-# Optional — only needed if switching providers
+# Optional
 OPENAI_API_KEY=your-openai-key
-GROQ_API_KEY=your-groq-key
 ```
 
 ### Run
@@ -97,17 +116,21 @@ GROQ_API_KEY=your-groq-key
 python main.py
 ```
 
-To change the research topic, edit the `broad_topic` variable in `main.py`:
+When prompted at the HITL checkpoint, type `approve` to continue, or describe changes to redirect the research.
+
+To change the research topic, edit `broad_topic` in `main.py`:
 
 ```python
 broad_topic = "The impact of microplastics on marine life."
 ```
 
-To switch LLM providers, change the `PROVIDER` variable:
+To switch LLM providers, change `PROVIDER`:
 
 ```python
-PROVIDER = "gemini"  # options: "gemini", "openai", "groq"
+PROVIDER = "gemini"  # options: "gemini", "groq", "openai"
 ```
+
+> **Tip:** If you hit Gemini rate limits during development, switch to `"groq"` — it has a much more generous free tier for experimentation.
 
 ## Project Structure
 
@@ -126,19 +149,31 @@ autogen-research-assistant/
 |---|---|
 | Topic Refinement Agent | ✅ Complete |
 | Paper Discovery Agent + arXiv tool | ✅ Complete |
-| Insight Synthesizer Agent | 🔄 In progress |
-| Report Compiler Agent | 🔄 In progress |
-| Gap Analysis Agent | 🔄 In progress |
-| Human-in-the-loop (HITL) | 🔄 In progress |
-| Custom selector function | 🔄 In progress |
+| Insight Synthesizer Agent | ✅ Complete |
+| Report Compiler Agent | ✅ Complete |
+| Gap Analysis Agent | ✅ Complete |
+| Full sequential pipeline (end-to-end) | ✅ Complete |
+| Human-in-the-loop (HITL) checkpoint | ✅ Complete |
+| Provider-agnostic LLM config | ✅ Complete |
+| Export report to markdown file | 🔜 Planned |
+| Custom selector function | 🔜 Planned |
+
+## Known Limitations
+
+- **PaperDiscoveryAgent loops** before terminating — it correctly finds and summarizes papers but repeats itself across turns before `max_turns` is reached. This is a known Groq/Llama tool-calling behaviour and does not affect output quality. A custom selector function would fix this cleanly and is planned as a future improvement.
+- **arXiv search quality** — results depend on how well the TopicRefinementAgent constructs keywords. Occasionally off-topic papers appear (e.g. light pollution papers in a microplastics search). Prompt tuning or a post-filter step would improve precision.
+- **Python 3.9** — several Google dependencies warn about end-of-life support. Upgrading to Python 3.10+ is recommended for production use.
 
 ## Roadmap
 
-- [ ] Add insight synthesis and report compilation agents
-- [ ] Implement human-in-the-loop approval checkpoint
-- [ ] Build custom selector function for workflow routing
-- [ ] Export final report to markdown file
+- [x] 5-agent sequential pipeline running end-to-end
+- [x] arXiv tool with caller/executor registration pattern
+- [x] Human-in-the-loop approval checkpoint
+- [x] Multi-provider LLM support (Gemini, Groq, OpenAI)
+- [ ] Custom selector function for strict workflow routing
+- [ ] Export final report to a `.md` file
 - [ ] Add support for PubMed and Semantic Scholar APIs
+- [ ] Upgrade to Python 3.10+
 
 ## Author
 
