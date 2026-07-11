@@ -71,6 +71,12 @@ User Input (broad topic)
 - **Provider-agnostic LLM config** — swap between Gemini, OpenAI, or Groq in one line
 - **Termination conditions** to prevent runaway agent loops
 
+## How It Works — Custom Selector Function
+
+One of the more interesting architectural challenges in this project was controlling *when* the `PaperDiscoveryAgent` should stop talking. AutoGen's default behaviour relies on `max_turns` — a hard ceiling on the number of exchanges — but this meant the agent would keep repeating its paper summaries until it hit the limit, wasting turns and adding noise to the output. The fix was to implement a custom reply function registered directly on the `UserProxy` agent, triggered specifically when it's in conversation with `PaperDiscoveryAgent`.
+
+The selector reads the last message after every exchange and checks for the `PAPERS_FOUND` signal. The moment it detects it, it returns `(True, None)` — AutoGen's convention for "stop and return nothing" — cutting the conversation short immediately. This means the agent calls the arXiv tool once, summarises the results, says `PAPERS_FOUND`, and the pipeline moves on without a single wasted turn. It's a small change in code but a meaningful shift in how the workflow is controlled: rather than relying on turn limits as a blunt instrument, the system now responds to the *semantic state* of the conversation.
+
 ## Tech Stack
 
 - [AutoGen](https://github.com/microsoft/autogen) — multi-agent orchestration framework
