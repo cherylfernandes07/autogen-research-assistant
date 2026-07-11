@@ -1,0 +1,19 @@
+pyautogen 
+python-dotenv 
+arxiv
+google-genai 
+vertexai
+google-generativeai
+
+# Multi-Agent Framework
+ag2[gemini]>=0.1.0
+
+# LLM Providers & SDKs
+openai
+groq
+
+# Environment & Utilities
+python-dotenv
+arxiv
+jsonschema
+Pillow
